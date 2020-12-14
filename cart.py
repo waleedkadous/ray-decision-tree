@@ -1,5 +1,9 @@
 """Implementation of the CART algorithm to train decision tree classifiers."""
 import numpy as np
+import ray
+import pandas as pd
+from sklearn import datasets, metrics
+import time
 
 import tree
 
@@ -136,71 +140,15 @@ class DecisionTreeClassifier:
 
 
 if __name__ == "__main__":
-    import argparse
-    import pandas as pd
-    from sklearn.datasets import load_breast_cancer, load_iris
-    from sklearn.tree import DecisionTreeClassifier as SklearnDecisionTreeClassifier
-    from sklearn.tree import export_graphviz
-    from sklearn.utils import Bunch
-
-    parser = argparse.ArgumentParser(description="Train a decision tree.")
-    parser.add_argument("--dataset", choices=["breast", "iris", "wifi"], default="wifi")
-    parser.add_argument("--max_depth", type=int, default=1)
-    parser.add_argument("--hide_details", dest="hide_details", action="store_true")
-    parser.set_defaults(hide_details=False)
-    parser.add_argument("--use_sklearn", dest="use_sklearn", action="store_true")
-    parser.set_defaults(use_sklearn=False)
-    args = parser.parse_args()
-
-    # 1. Load dataset.
-    if args.dataset == "breast":
-        dataset = load_breast_cancer()
-    elif args.dataset == "iris":
-        dataset = load_iris()
-    elif args.dataset == "wifi":
-        # https://archive.ics.uci.edu/ml/datasets/Wireless+Indoor+Localization
-        df = pd.read_csv("wifi_localization.txt", delimiter="\t")
-        data = df.to_numpy()
-        dataset = Bunch(
-            data=data[:, :-1],
-            target=data[:, -1] - 1,
-            feature_names=["Wifi {}".format(i) for i in range(1, 8)],
-            target_names=["Room {}".format(i) for i in range(1, 5)],
-        )
-    X, y = dataset.data, dataset.target
-
-    # 2. Fit decision tree.
-    if args.use_sklearn:
-        clf = SklearnDecisionTreeClassifier(max_depth=args.max_depth)
-    else:
-        clf = DecisionTreeClassifier(max_depth=args.max_depth)
-    clf.fit(X, y)
-
-    # 3. Predict.
-    if args.dataset == "iris":
-        input = [0, 0, 5.0, 1.5]
-    elif args.dataset == "wifi":
-        input = [-70, 0, 0, 0, -40, 0, 0]
-    elif args.dataset == "breast":
-        input = [np.random.rand() for _ in range(30)]
-    pred = clf.predict([input])[0]
-    print("Input: {}".format(input))
-    print("Prediction: " + dataset.target_names[pred])
-
-    # 4. Visualize.
-    if args.use_sklearn:
-        export_graphviz(
-            clf,
-            out_file="tree.dot",
-            feature_names=dataset.feature_names,
-            class_names=dataset.target_names,
-            rounded=True,
-            filled=True,
-        )
-        print("Done. To convert to PNG, run: dot -Tpng tree.dot -o tree.png")
-    else:
-        clf.debug(
-            list(dataset.feature_names),
-            list(dataset.target_names),
-            not args.hide_details,
-        )
+    ray.init()
+    dataset = datasets.fetch_covtype() 
+    X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
+    training_size = 100000 # only use first 100,000 for training. 
+    max_depth = 8
+    clf = DecisionTreeClassifier(max_depth=max_depth)
+    start = time.time()
+    clf.fit(X[:training_size], y[:training_size])
+    end = time.time()
+    print("Serial execution took", end-start)
+    y_pred = clf.predict(X[training_size:])
+    print(metrics.classification_report(y[training_size:], y_pred))
