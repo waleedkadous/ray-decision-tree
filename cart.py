@@ -4,7 +4,6 @@ import ray
 import pandas as pd
 from sklearn import datasets, metrics
 import time
-
 import tree
 
 
@@ -149,6 +148,6 @@ if __name__ == "__main__":
     start = time.time()
     clf.fit(X[:training_size], y[:training_size])
     end = time.time()
-    print("Serial execution took", end-start)
+    print("Serial execution took", end-start, " seconds")
     y_pred = clf.predict(X[training_size:])
-    print(metrics.classification_report(y[training_size:], y_pred))
+    print("Test Accuracy: ", metrics.accuracy_score(y[training_size:], y_pred))
