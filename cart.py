@@ -4,12 +4,13 @@ import ray
 import pandas as pd
 from sklearn import datasets, metrics
 import time
-import tree
+from tree import Node
 
 
 class DecisionTreeClassifier:
-    def __init__(self, max_depth=None):
+    def __init__(self, max_depth=None, tree_limit=5000):
         self.max_depth = max_depth
+        self.tree_limit = tree_limit
 
     def fit(self, X, y):
         """Build decision tree classifier."""
@@ -102,30 +103,9 @@ class DecisionTreeClassifier:
         return best_idx, best_thr
 
     def _grow_tree(self, X, y, depth=0):
-        """Build a decision tree by recursively finding the best split."""
-        # Population for each class in current node. The predicted class is the one with
-        # largest population.
-        num_samples_per_class = [np.sum(y == i) for i in range(self.n_classes_)]
-        predicted_class = np.argmax(num_samples_per_class)
-        node = tree.Node(
-            gini=self._gini(y),
-            num_samples=y.size,
-            num_samples_per_class=num_samples_per_class,
-            predicted_class=predicted_class,
-        )
+        future = grow_tree_remote.remote(self, X, y, depth)
+        return ray.get(future)
 
-        # Split recursively until maximum depth is reached.
-        if depth < self.max_depth:
-            idx, thr = self._best_split(X, y)
-            if idx is not None:
-                indices_left = X[:, idx] < thr
-                X_left, y_left = X[indices_left], y[indices_left]
-                X_right, y_right = X[~indices_left], y[~indices_left]
-                node.feature_index = idx
-                node.threshold = thr
-                node.left = self._grow_tree(X_left, y_left, depth + 1)
-                node.right = self._grow_tree(X_right, y_right, depth + 1)
-        return node
 
     def _predict(self, inputs):
         """Predict class for a single sample."""
@@ -138,6 +118,66 @@ class DecisionTreeClassifier:
         return node.predicted_class
 
 
+def grow_tree_local(tree, X, y, depth):
+    """Build a decision tree by recursively finding the best split."""
+    # Population for each class in current node. The predicted class is the one with
+    # largest population.
+    num_samples_per_class = [np.sum(y == i) for i in range(tree.n_classes_)]
+    predicted_class = np.argmax(num_samples_per_class)
+    node = Node(
+        gini=tree._gini(y),
+        num_samples=y.size,
+        num_samples_per_class=num_samples_per_class,
+        predicted_class=predicted_class,
+    )
+
+    # Split recursively until maximum depth is reached.
+    if depth < tree.max_depth:
+        idx, thr = tree._best_split(X, y)
+        if idx is not None:
+            indices_left = X[:, idx] < thr
+            X_left, y_left = X[indices_left], y[indices_left]
+            X_right, y_right = X[~indices_left], y[~indices_left]
+            node.feature_index = idx
+            node.threshold = thr
+            node.left = grow_tree_local(tree, X_left, y_left, depth + 1)
+            node.right = grow_tree_local(tree, X_right, y_right, depth + 1)
+    return node
+
+@ray.remote
+def grow_tree_remote(tree, X, y, depth=0):
+    """Build a decision tree by recursively finding the best split."""
+    # Population for each class in current node. The predicted class is the one with
+    # largest population.
+    #print("Len x", len(X))
+    num_samples_per_class = [np.sum(y == i) for i in range(tree.n_classes_)]
+    predicted_class = np.argmax(num_samples_per_class)
+    node = Node(
+        gini=tree._gini(y),
+        num_samples=y.size,
+        num_samples_per_class=num_samples_per_class,
+        predicted_class=predicted_class,
+    )
+
+    # Split recursively until maximum depth is reached.
+    if depth < tree.max_depth:
+        idx, thr = tree._best_split(X, y)
+        if idx is not None:
+            indices_left = X[:, idx] < thr
+            X_left, y_left = X[indices_left], y[indices_left]
+            X_right, y_right = X[~indices_left], y[~indices_left]
+            node.feature_index = idx
+            node.threshold = thr
+            if (len(X_left) > tree.tree_limit or len(X_right) > tree.tree_limit): 
+                left_future = grow_tree_remote.remote(tree, X_left, y_left, depth + 1)
+                right_future = grow_tree_remote.remote(tree, X_right, y_right, depth + 1)
+                node.left = ray.get(left_future)
+                node.right = ray.get(right_future)
+            else:
+                node.left = grow_tree_local(tree, X_left, y_left, depth + 1)
+                node.right = grow_tree_local(tree, X_right, y_right, depth + 1)          
+    return node
+
 if __name__ == "__main__":
     ray.init()
     dataset = datasets.fetch_covtype() 
@@ -148,6 +188,6 @@ if __name__ == "__main__":
     start = time.time()
     clf.fit(X[:training_size], y[:training_size])
     end = time.time()
-    print("Serial execution took", end-start, " seconds")
+    print("Tree building took", end-start, " seconds")
     y_pred = clf.predict(X[training_size:])
     print("Test Accuracy: ", metrics.accuracy_score(y[training_size:], y_pred))
