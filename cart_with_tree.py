@@ -347,7 +347,7 @@ def best_split(tree, X, y):
 if __name__ == "__main__":
     # uncomment the below code to use local mode (which seems to work)
     #ray.init()
-    anyscale.sesssion('ui-started-session').connect()
+    anyscale.connect()
     dataset = datasets.fetch_covtype() 
     X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
     training_size = 400000  
