@@ -1,5 +1,6 @@
 """Implementation of the CART algorithm to train decision tree classifiers."""
 import numpy as np
+import anyscale
 import ray
 import pandas as pd
 from sklearn import datasets, metrics
@@ -263,7 +264,9 @@ def best_split(tree, X, y):
     return best_idx, best_thr
 
 if __name__ == "__main__":
-    ray.init()
+    # uncomment the below code to use local mode (which seems to work)
+    #ray.init()
+    anyscale.connect()
     dataset = datasets.fetch_covtype() 
     X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
     training_size = 100000 # only use first 100,000 for training. 
