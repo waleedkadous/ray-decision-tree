@@ -5,6 +5,7 @@ import ray
 import pandas as pd
 from sklearn import datasets, metrics
 import time
+import random
 
 
 """Binary tree with decision tree semantics and ASCII visualization."""
@@ -347,7 +348,7 @@ def best_split(tree, X, y):
 if __name__ == "__main__":
     # uncomment the below code to use local mode (which seems to work)
     #ray.init()
-    anyscale.connect()
+    anyscale.session('test-' + str(random.randint(0,1e9))).connect()
     dataset = datasets.fetch_covtype() 
     X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
     training_size = 400000  
