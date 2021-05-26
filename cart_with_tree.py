@@ -346,9 +346,8 @@ def best_split(tree, X, y):
     return best_idx, best_thr
 
 if __name__ == "__main__":
-    # uncomment the below code to use local mode (which seems to work)
-    #ray.init()
-    anyscale.session('test-' + str(random.randint(0,1e9))).connect()
+    ray.client("anyscale://test-427?cluster_env=nightly").connect()
+    #anyscale.app_config("nightly").connect()
     dataset = datasets.fetch_covtype() 
     X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
     training_size = 400000  
