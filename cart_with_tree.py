@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn import datasets, metrics
 import time
 import random
+import argparse
 
 
 """Binary tree with decision tree semantics and ASCII visualization."""
@@ -345,9 +346,9 @@ def best_split(tree, X, y):
     
     return best_idx, best_thr
 
-if __name__ == "__main__":
-    ray.client("anyscale://test-427?cluster_env=nightly").connect()
-    #anyscale.app_config("nightly").connect()
+
+@ray.remote
+def run_in_cluster():
     dataset = datasets.fetch_covtype() 
     X, y = dataset.data, dataset.target - 1 #above algorithm assumes classes start at 0
     training_size = 400000  
@@ -356,6 +357,21 @@ if __name__ == "__main__":
     start = time.time()
     clf.fit(X[:training_size], y[:training_size])
     end = time.time()
-    print("Tree building took", end-start, " seconds")
     y_pred = clf.predict(X[training_size:])
-    print("Test Accuracy: ", metrics.accuracy_score(y[training_size:], y_pred))
+    accuracy = metrics.accuracy_score(y[training_size:], y_pred)
+    return end-start, accuracy
+    
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", help="Cluster number")
+    args = parser.parse_args()
+    asurl = "anyscale://lt2-"+args.n + "?cluster_env=withdeps"
+    print("Connecting to " + asurl)
+    ray.client(asurl).connect()
+    #anyscale.app_config("nightly").connect()
+    cluster_future = run_in_cluster.remote()
+    treetime, accuracy = ray.get(cluster_future); 
+    print("Tree building took", treetime, " seconds")
+    print("Test Accuracy: ", accuracy)
